@@ -1,0 +1,50 @@
+project_id = "draftbit-supabase-backend"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
+# Site URL is environment-specific hosted Auth configuration. Keep it out of the
+# shared config: publishing currently sends env(...) expressions literally.
+# Set Authentication -> URL Configuration -> Site URL for each target.
+additional_redirect_urls = ["http://localhost:3000/onboarding", "https://eabc56ee1c.sandbox.draftbit.dev:5101/onboarding", "https://990821eef7.draftbit.dev/onboarding", "https://7b7a3bf673.draftbit.dev/onboarding"]
+enable_signup = true
+minimum_password_length = 8
+
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+double_confirm_changes = true
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[functions.hello]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/hello/index.ts"
+
+
+[functions.active-cast]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/active-cast/index.ts"
+
+[functions.cast-viewer]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/cast-viewer/index.ts"

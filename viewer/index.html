@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>CamCast recipient viewer</title>
+<!-- Host injects the public cast-viewer function URL at deployment, never a key. -->
+<meta name="cast-viewer-api" content="">
+<style>body{font:18px system-ui;max-width:42rem;margin:3rem auto;padding:1rem;color:#18232d;background:#f7fafc}section{background:white;padding:1.2rem;border:1px solid #ccd5df;border-radius:.6rem;margin:1rem 0}label{display:block}textarea{box-sizing:border-box;width:100%;font:inherit}button{font:inherit;padding:.5rem 1rem}small{display:block;margin-top:.8rem}</style></head>
+<body><h1>CamCast</h1><p id="status" role="status">Checking access…</p>
+<section><h2>Live View</h2><p id="video">Video availability is being checked.</p></section>
+<section><h2>Shared location</h2><p id="location">No shared fix received.</p></section>
+<section><h2>Send a message</h2><form id="message-form"><label for="body">Message (500 characters)</label><textarea id="body" maxlength="500" required disabled></textarea><button id="send" disabled>Send for review</button></form><small id="message-status" role="status">Messages appear after broadcaster moderation. Your identity is shown as Guest.</small></section>
+<script type="module">
+const api = document.querySelector('meta[name="cast-viewer-api"]').content;
+let token = new URLSearchParams(location.hash.slice(1)).get('token');
+history.replaceState(null, '', location.pathname);
+const status = document.getElementById('status');
+const locationText = document.getElementById('location');
+const video = document.getElementById('video');
+const form = document.getElementById('message-form');
+const body = document.getElementById('body');
+const send = document.getElementById('send');
+const messageStatus = document.getElementById('message-status');
+let timer;
+let pending;
+let stopped = false;
+async function call(action, input = {}) {
+ const response = await fetch(api, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, action, input }), cache: 'no-store', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(10000) });
+ if (response.status === 403) { stopped = true; clearTimeout(timer); token = null; body.disabled = true; send.disabled = true; locationText.textContent = 'Access is no longer available.'; video.textContent = 'Access is no longer available.'; throw new Error('Access expired or was revoked.'); }
+ if (!response.ok) throw new Error('Request unavailable. Retry with the same message.');
+ return response.json();
+}
+async function poll() {
+ try {
+  const access = await call('heartbeat');
+  status.textContent = 'Access authorized. Expires ' + new Date(access.expires_at).toLocaleString();
+  video.textContent = access.video_state === 'not_authorized' ? 'Video is outside this link’s scope.' : 'Live View is unavailable. The media pipeline has not been configured.';
+  body.disabled = false; send.disabled = false;
+  if (access.location_authorized) {
+   const fix = await call('location');
+   locationText.textContent = fix.state === 'no_shared_fix' ? 'No shared fix received.' : `Approximate location: ${fix.latitude.toFixed(5)}, ${fix.longitude.toFixed(5)}. Accuracy ±${Math.round(fix.accuracy_m)} m. Recorded ${new Date(fix.device_recorded_at).toLocaleString()} (${Math.floor(fix.age_seconds)} seconds old${fix.stale ? ', stale' : ''}).`;
+  } else locationText.textContent = 'Location is outside this link’s scope.';
+ } catch(error) { status.textContent = error.message; body.disabled = true; send.disabled = true; locationText.textContent = 'Location unavailable; refresh pending.'; }
+ if (!stopped) timer = setTimeout(poll, 15000);
+}
+form.addEventListener('submit', async (event) => {
+ event.preventDefault();
+ if (!body.value.trim()) return;
+ if (pending && pending.body !== body.value.trim()) { messageStatus.textContent = 'Retry the pending message before editing it.'; return; }
+ pending ??= { message_id: crypto.randomUUID(), body: body.value.trim() };
+ send.disabled = true;
+ try { const result = await call('message', pending); messageStatus.textContent = 'Message ' + result.moderation + '.'; pending = undefined; body.value = ''; }
+ catch(error) { messageStatus.textContent = error.message; }
+ finally { if (!stopped) send.disabled = false; }
+});
+if (!api || !/^https:\/\//.test(api)) { status.textContent = 'Recipient viewer service is not configured.'; stopped = true; }
+else if (!token || !/^[a-f0-9]{64}$/.test(token)) { status.textContent = 'This access link is invalid.'; stopped = true; }
+else void poll();
+</script></body></html>
